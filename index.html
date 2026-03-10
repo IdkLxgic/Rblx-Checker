@@ -283,6 +283,12 @@
     .line-num strong {
       color: var(--accent);
       font-weight: 500;
+      cursor: pointer;
+      border-bottom: 1px solid transparent;
+      transition: border-color .1s;
+    }
+    .line-num strong:hover {
+      border-bottom-color: var(--accent);
     }
     .match-name {
       color: var(--text);
