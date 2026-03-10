@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRACE // Digital Footprint Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --green: #00ff9d;
+    --green-dim: #00cc7a;
+    --green-dark: #003d25;
+    --cyan: #00e5ff;
+    --red: #ff3c3c;
+    --yellow: #ffd600;
+    --bg: #020c07;
+    --bg2: #050f0a;
+    --panel: #071410;
+    --border: #0a3020;
+    --text: #a0ffcc;
+    --text-dim: #3a7a56;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,255,157,0.015) 2px,
+      rgba(0,255,157,0.015) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Grid background */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      linear-gradient(rgba(0,255,157,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,157,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .noise {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    opacity: 0.04;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 10;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px 60px;
+  }
+
+  /* HEADER */
+  header {
+    padding: 40px 0 30px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .logo {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .logo-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 2.2rem;
+    font-weight: 900;
+    color: var(--green);
+    letter-spacing: 6px;
+    text-shadow: 0 0 20px rgba(0,255,157,0.5), 0 0 60px rgba(0,255,157,0.2);
+    animation: flicker 8s infinite;
+  }
+
+  .logo-sub {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 4px;
+    text-transform: uppercase;
+  }
+
+  .status-bar {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    margin-right: 6px;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  @keyframes flicker {
+    0%, 95%, 100% { opacity: 1; }
+    96% { opacity: 0.8; }
+    97% { opacity: 1; }
+    98% { opacity: 0.6; }
+    99% { opacity: 1; }
+  }
+
+  /* INPUT SECTION */
+  .input-section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--green);
+    padding: 32px;
+    margin-bottom: 32px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .input-section::before {
+    content: 'SUBJECT IDENTIFICATION';
+    position: absolute;
+    top: 12px; left: 16px;
+    font-size: 0.6rem;
+    color: var(--green);
+    letter-spacing: 4px;
+    opacity: 0.6;
+  }
+
+  .input-section::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--green), transparent);
+    animation: scanline-h 4s linear infinite;
+  }
+
+  @keyframes scanline-h {
+    0% { transform: scaleX(0); transform-origin: left; }
+    50% { transform: scaleX(1); transform-origin: left; }
+    51% { transform: scaleX(1); transform-origin: right; }
+    100% { transform: scaleX(0); transform-origin: right; }
+  }
+
+  .input-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+    margin-top: 20px;
+  }
+
+  @media (max-width: 700px) {
+    .input-grid { grid-template-columns: 1fr; }
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .field label {
+    font-size: 0.6rem;
+    letter-spacing: 3px;
+    color: var(--green-dim);
+    text-transform: uppercase;
+  }
+
+  .field input {
+    background: rgba(0,255,157,0.03);
+    border: 1px solid var(--border);
+    border-bottom: 1px solid var(--green-dim);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.95rem;
+    padding: 10px 14px;
+    outline: none;
+    transition: all 0.3s;
+    letter-spacing: 1px;
+  }
+
+  .field input::placeholder { color: var(--text-dim); }
+
+  .field input:focus {
+    background: rgba(0,255,157,0.06);
+    border-color: var(--green);
+    box-shadow: 0 0 15px rgba(0,255,157,0.1), inset 0 0 10px rgba(0,255,157,0.03);
+  }
+
+  .trace-btn {
+    background: transparent;
+    border: 1px solid var(--green);
+    color: var(--green);
+    font-family: 'Orbitron', monospace;
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 4px;
+    padding: 14px 40px;
+    cursor: crosshair;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+    text-transform: uppercase;
+    width: 100%;
+  }
+
+  .trace-btn::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0,255,157,0.15), transparent);
+    transition: left 0.5s;
+  }
+
+  .trace-btn:hover::before { left: 100%; }
+
+  .trace-btn:hover {
+    background: rgba(0,255,157,0.08);
+    box-shadow: 0 0 25px rgba(0,255,157,0.3), inset 0 0 20px rgba(0,255,157,0.05);
+    text-shadow: 0 0 10px var(--green);
+  }
+
+  .trace-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* SCANNING ANIMATION */
+  .scan-section {
+    display: none;
+    text-align: center;
+    padding: 60px 20px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    margin-bottom: 32px;
+  }
+
+  .scan-section.active { display: block; }
+
+  .radar {
+    width: 120px;
+    height: 120px;
+    border: 2px solid var(--green-dim);
+    border-radius: 50%;
+    position: relative;
+    margin: 0 auto 24px;
+  }
+
+  .radar::before, .radar::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+  }
+
+  .radar::before {
+    width: 70%; height: 70%;
+    border: 1px solid rgba(0,255,157,0.3);
+  }
+
+  .radar::after {
+    width: 40%; height: 40%;
+    border: 1px solid rgba(0,255,157,0.2);
+  }
+
+  .radar-sweep {
+    position: absolute;
+    top: 0; left: 50%;
+    width: 50%; height: 50%;
+    transform-origin: bottom left;
+    background: conic-gradient(from 0deg, transparent 270deg, rgba(0,255,157,0.4) 360deg);
+    animation: sweep 2s linear infinite;
+    border-radius: 0 100% 0 0;
+  }
+
+  .radar-center {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 8px; height: 8px;
+    background: var(--green);
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--green);
+  }
+
+  @keyframes sweep {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .scan-log {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    line-height: 2;
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  .scan-log .log-line {
+    opacity: 0;
+    animation: fadein 0.3s forwards;
+    text-align: left;
+  }
+
+  .scan-log .log-line::before {
+    content: '> ';
+    color: var(--green);
+  }
+
+  @keyframes fadein {
+    to { opacity: 1; }
+  }
+
+  /* RESULTS */
+  .results-section { display: none; }
+  .results-section.active { display: block; }
+
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .results-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.9rem;
+    letter-spacing: 4px;
+    color: var(--green);
+  }
+
+  .threat-score {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+  }
+
+  .threat-label {
+    font-size: 0.6rem;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+  }
+
+  .threat-value {
+    font-family: 'Orbitron', monospace;
+    font-size: 1.4rem;
+    font-weight: 900;
+    color: var(--yellow);
+    text-shadow: 0 0 15px rgba(255,214,0,0.4);
+  }
+
+  /* Summary panel */
+  .summary-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--cyan);
+    padding: 24px;
+    margin-bottom: 24px;
+    font-size: 0.85rem;
+    line-height: 1.8;
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1rem;
+    letter-spacing: 0.5px;
+  }
+
+  .summary-panel h3 {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 4px;
+    color: var(--cyan);
+    margin-bottom: 12px;
+  }
+
+  /* Platform grid */
+  .platforms-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .platform-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(10px);
+    animation: cardReveal 0.4s forwards;
+    transition: all 0.3s;
+  }
+
+  .platform-card:hover {
+    border-color: var(--green-dim);
+    box-shadow: 0 0 20px rgba(0,255,157,0.05);
+    transform: translateY(-2px) !important;
+  }
+
+  .platform-card.found { border-left: 3px solid var(--green); }
+  .platform-card.not-found { border-left: 3px solid #333; opacity: 0.5 !important; }
+  .platform-card.checked { border-left: 3px solid var(--yellow); }
+
+  @keyframes cardReveal {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .platform-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .platform-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    color: var(--text);
+  }
+
+  .platform-status {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    padding: 3px 10px;
+    border: 1px solid currentColor;
+  }
+
+  .status-found { color: var(--green); }
+  .status-notfound { color: #444; }
+  .status-possible { color: var(--yellow); }
+
+  .platform-icon {
+    font-size: 1.4rem;
+    margin-right: 10px;
+  }
+
+  .platform-name-wrap {
+    display: flex;
+    align-items: center;
+  }
+
+  .platform-url {
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    word-break: break-all;
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+
+  .platform-url a {
+    color: var(--cyan);
+    text-decoration: none;
+  }
+
+  .platform-url a:hover { text-decoration: underline; }
+
+  .platform-detail {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 0.85rem;
+  }
+
+  /* Exposure bar */
+  .exposure-section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+
+  .exposure-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 4px;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+
+  .exposure-bar-wrap {
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .exposure-label {
+    width: 100px;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+
+  .exposure-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .exposure-fill {
+    height: 100%;
+    background: var(--green);
+    width: 0%;
+    transition: width 1s ease;
+    box-shadow: 0 0 8px var(--green);
+  }
+
+  .exposure-fill.medium { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+  .exposure-fill.high { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+  .exposure-pct {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    width: 36px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  /* Error */
+  .error-panel {
+    display: none;
+    background: var(--panel);
+    border: 1px solid rgba(255,60,60,0.3);
+    border-left: 3px solid var(--red);
+    padding: 20px 24px;
+    margin-bottom: 24px;
+    color: var(--red);
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+  }
+
+  .error-panel.active { display: block; }
+
+  /* Footer */
+  footer {
+    margin-top: 60px;
+    border-top: 1px solid var(--border);
+    padding-top: 20px;
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 3px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Typewriter */
+  .typewriter {
+    overflow: hidden;
+    border-right: 2px solid var(--green);
+    white-space: nowrap;
+    animation: typing 1s steps(20) forwards, blink 0.75s step-end infinite;
+  }
+
+  @keyframes typing {
+    from { width: 0; }
+    to { width: 100%; }
+  }
+
+  @keyframes blink {
+    50% { border-color: transparent; }
+  }
+
+  .corner-tl, .corner-tr, .corner-bl, .corner-br {
+    position: absolute;
+    width: 12px; height: 12px;
+  }
+  .corner-tl { top: 0; left: 0; border-top: 2px solid var(--green); border-left: 2px solid var(--green); }
+  .corner-tr { top: 0; right: 0; border-top: 2px solid var(--green); border-right: 2px solid var(--green); }
+  .corner-bl { bottom: 0; left: 0; border-bottom: 2px solid var(--green); border-left: 2px solid var(--green); }
+  .corner-br { bottom: 0; right: 0; border-bottom: 2px solid var(--green); border-right: 2px solid var(--green); }
+
+  .disclaimer {
+    background: rgba(255,214,0,0.04);
+    border: 1px solid rgba(255,214,0,0.2);
+    padding: 12px 18px;
+    font-size: 0.65rem;
+    color: rgba(255,214,0,0.5);
+    letter-spacing: 2px;
+    line-height: 1.8;
+    margin-bottom: 24px;
+  }
+</style>
+</head>
+<body>
+<div class="noise"></div>
+<div class="container">
+
+  <header>
+    <div class="logo">
+      <div class="logo-title">TRACE</div>
+      <div class="logo-sub">Digital Footprint Analyzer // v2.7.1</div>
+    </div>
+    <div class="status-bar">
+      <div><span class="status-dot"></span>SYSTEM ONLINE</div>
+      <div id="clock">--:--:-- UTC</div>
+      <div>NODE: ALPHA-7 // ENCRYPTED</div>
+    </div>
+  </header>
+
+  <div class="disclaimer">
+    ⚠ ETHICAL USE ONLY — This tool analyzes publicly available information. Only search usernames you own or have permission to investigate. Results are AI-generated estimations, not real-time scraping.
+  </div>
+
+  <div class="input-section">
+    <div class="corner-tl"></div><div class="corner-tr"></div>
+    <div class="corner-bl"></div><div class="corner-br"></div>
+    <div class="input-grid">
+      <div class="field">
+        <label>Username / Handle</label>
+        <input type="text" id="username" placeholder="e.g. johndoe99" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label>Email Address</label>
+        <input type="text" id="email" placeholder="e.g. john@email.com" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field">
+        <label>Nickname / Alias</label>
+        <input type="text" id="nickname" placeholder="e.g. shadow_runner" autocomplete="off" spellcheck="false">
+      </div>
+    </div>
+    <button class="trace-btn" id="traceBtn" onclick="startTrace()">
+      ⬡ INITIATE TRACE SEQUENCE
+    </button>
+  </div>
+
+  <div class="error-panel" id="errorPanel">
+    <strong>TRACE ERROR:</strong> <span id="errorMsg"></span>
+  </div>
+
+  <div class="scan-section" id="scanSection">
+    <div class="radar">
+      <div class="radar-sweep"></div>
+      <div class="radar-center"></div>
+    </div>
+    <div class="scan-log" id="scanLog"></div>
+  </div>
+
+  <div class="results-section" id="resultsSection">
+    <div class="results-header">
+      <div class="results-title">// TRACE COMPLETE — SUBJECT PROFILE</div>
+      <div class="threat-score">
+        <div>
+          <div class="threat-label">EXPOSURE INDEX</div>
+          <div class="threat-value" id="exposureIndex">--</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="summary-panel" id="summaryPanel">
+      <h3>// ANALYST SUMMARY</h3>
+      <div id="summaryText"></div>
+    </div>
+
+    <div class="exposure-section" id="exposureSection">
+      <div class="exposure-title">// EXPOSURE BREAKDOWN BY CATEGORY</div>
+      <div id="exposureBars"></div>
+    </div>
+
+    <div class="platforms-grid" id="platformsGrid"></div>
+  </div>
+
+  <footer>
+    <span>TRACE // DIGITAL FOOTPRINT ANALYZER</span>
+    <span>POWERED BY CLAUDE AI // ANTHROPIC</span>
+    <span id="footerTime">SESSION: ACTIVE</span>
+  </footer>
+</div>
+
+<script>
+// Clock
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toUTCString().split(' ')[4] + ' UTC';
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+const logMessages = [
+  "Initializing trace protocol...",
+  "Connecting to intelligence nodes...",
+  "Scanning social media platforms...",
+  "Probing developer ecosystems...",
+  "Checking gaming networks...",
+  "Analyzing forum presence...",
+  "Cross-referencing data breach databases...",
+  "Correlating identity markers...",
+  "Compiling threat assessment...",
+  "Generating subject profile..."
+];
+
+let logInterval;
+
+function showLog() {
+  const logEl = document.getElementById('scanLog');
+  logEl.innerHTML = '';
+  let i = 0;
+  logInterval = setInterval(() => {
+    if (i < logMessages.length) {
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      line.style.animationDelay = '0s';
+      line.textContent = logMessages[i];
+      logEl.appendChild(line);
+      i++;
+    } else {
+      clearInterval(logInterval);
+    }
+  }, 600);
+}
+
+async function startTrace() {
+  const username = document.getElementById('username').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const nickname = document.getElementById('nickname').value.trim();
+
+  if (!username && !email && !nickname) {
+    showError('At least one identifier required to initiate trace.');
+    return;
+  }
+
+  // Reset UI
+  document.getElementById('errorPanel').classList.remove('active');
+  document.getElementById('resultsSection').classList.remove('active');
+  document.getElementById('scanSection').classList.add('active');
+  document.getElementById('traceBtn').disabled = true;
+  showLog();
+
+  const prompt = buildPrompt(username, email, nickname);
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        system: `You are a digital OSINT analyst. When given a username, email, or nickname, you analyze the likely digital footprint of a person with that identity across the internet. You respond ONLY with valid JSON (no markdown, no backticks, no preamble).`,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+
+    const data = await response.json();
+    const raw = data.content.map(b => b.text || '').join('');
+    const clean = raw.replace(/```json|```/g, '').trim();
+    const result = JSON.parse(clean);
+
+    clearInterval(logInterval);
+    setTimeout(() => renderResults(result), 800);
+  } catch (e) {
+    clearInterval(logInterval);
+    document.getElementById('scanSection').classList.remove('active');
+    document.getElementById('traceBtn').disabled = false;
+    showError('Trace failed: ' + (e.message || 'Unknown error. Check API key.'));
+  }
+}
+
+function buildPrompt(username, email, nickname) {
+  return `Analyze the digital footprint for this subject:
+Username: "${username || 'N/A'}"
+Email: "${email || 'N/A'}"
+Nickname: "${nickname || 'N/A'}"
+
+Based on typical patterns for this type of identifier, generate a realistic OSINT-style digital footprint analysis.
+
+Return ONLY this exact JSON structure:
+{
+  "exposureIndex": <number 0-100>,
+  "exposureLevel": "<LOW|MEDIUM|HIGH|CRITICAL>",
+  "summary": "<2-3 sentences analyst summary of the subject's likely digital presence and risk profile>",
+  "categories": [
+    { "name": "<category>", "score": <0-100>, "level": "<low|medium|high>" }
+  ],
+  "platforms": [
+    {
+      "name": "<Platform Name>",
+      "icon": "<emoji>",
+      "status": "<FOUND|NOT FOUND|POSSIBLE>",
+      "url": "<likely profile URL or N/A>",
+      "detail": "<one sentence about what was found or likely exists here>"
+    }
+  ]
+}
+
+Categories must include: Social Media, Developer Tools, Gaming, Forums & Communities, Professional Networks, Data Brokers.
+Platforms must include at least 12 platforms like: Twitter/X, GitHub, Reddit, LinkedIn, Instagram, TikTok, Facebook, YouTube, Steam, Discord (servers), HackerNews, Stack Overflow, Twitch, Spotify, Pinterest, Medium, Keybase, Gravatar, Have I Been Pwned (data breaches).
+Be realistic and thoughtful. If username looks technical (has numbers, underscores), it's more likely on GitHub/HackerNews. Common names more likely on social. Email domains give clues. Make the analysis feel genuine and investigative.`;
+}
+
+function renderResults(data) {
+  document.getElementById('scanSection').classList.remove('active');
+  document.getElementById('resultsSection').classList.add('active');
+  document.getElementById('traceBtn').disabled = false;
+
+  // Exposure index
+  const lvlColors = { LOW: '#00ff9d', MEDIUM: '#ffd600', HIGH: '#ff8c00', CRITICAL: '#ff3c3c' };
+  const idxEl = document.getElementById('exposureIndex');
+  idxEl.textContent = data.exposureIndex + ' / ' + data.exposureLevel;
+  idxEl.style.color = lvlColors[data.exposureLevel] || '#ffd600';
+
+  // Summary
+  document.getElementById('summaryText').textContent = data.summary;
+
+  // Exposure bars
+  const barsEl = document.getElementById('exposureBars');
+  barsEl.innerHTML = '';
+  (data.categories || []).forEach((cat, i) => {
+    const levelClass = cat.score > 70 ? 'high' : cat.score > 40 ? 'medium' : '';
+    barsEl.innerHTML += `
+      <div class="exposure-bar-wrap">
+        <div class="exposure-label">${cat.name}</div>
+        <div class="exposure-bar">
+          <div class="exposure-fill ${levelClass}" id="bar-${i}" data-target="${cat.score}"></div>
+        </div>
+        <div class="exposure-pct">${cat.score}%</div>
+      </div>`;
+  });
+
+  setTimeout(() => {
+    (data.categories || []).forEach((cat, i) => {
+      const bar = document.getElementById('bar-' + i);
+      if (bar) bar.style.width = cat.score + '%';
+    });
+  }, 100);
+
+  // Platform cards
+  const grid = document.getElementById('platformsGrid');
+  grid.innerHTML = '';
+  const statusClass = { 'FOUND': 'found', 'NOT FOUND': 'not-found', 'POSSIBLE': 'checked' };
+  const statusLabel = { 'FOUND': 'status-found', 'NOT FOUND': 'status-notfound', 'POSSIBLE': 'status-possible' };
+
+  (data.platforms || []).forEach((p, i) => {
+    const cardClass = statusClass[p.status] || 'checked';
+    const labelClass = statusLabel[p.status] || 'status-possible';
+    const url = p.url && p.url !== 'N/A'
+      ? `<a href="${p.url}" target="_blank" rel="noopener">${p.url}</a>`
+      : `<span style="color:#333">N/A</span>`;
+
+    const card = document.createElement('div');
+    card.className = `platform-card ${cardClass}`;
+    card.style.animationDelay = (i * 0.06) + 's';
+    card.innerHTML = `
+      <div class="platform-header">
+        <div class="platform-name-wrap">
+          <span class="platform-icon">${p.icon || '🌐'}</span>
+          <span class="platform-name">${p.name}</span>
+        </div>
+        <span class="platform-status ${labelClass}">${p.status}</span>
+      </div>
+      <div class="platform-url">${url}</div>
+      <div class="platform-detail">${p.detail}</div>`;
+    grid.appendChild(card);
+  });
+}
+
+function showError(msg) {
+  document.getElementById('errorMsg').textContent = msg;
+  document.getElementById('errorPanel').classList.add('active');
+}
+
+// Allow Enter key
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') startTrace();
+});
+</script>
+</body>
+</html>
